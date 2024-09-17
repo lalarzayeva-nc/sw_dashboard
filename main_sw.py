@@ -7,19 +7,10 @@ import io
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
-#import constants as cn
 
 service_account_info = st.secrets["gcp_service_account"]
 credentials = service_account.Credentials.from_service_account_info(service_account_info)
 service = build('drive', 'v3', credentials=credentials)
-
-
-# Use the credentials to authenticate
-credentials = service_account.Credentials.from_service_account_info(service_account_info)
-service = build('drive', 'v3', credentials=credentials)
-
-# credentials = service_account.Credentials.from_service_account_info(cn.service_account_info)
-# service = build('drive', 'v3', credentials=credentials)
 
 def read_data(name, id):
     file_id = id
@@ -32,7 +23,6 @@ def read_data(name, id):
     fh.seek(0)
     globals()[name] = pd.read_csv(fh)  
 
-
 read_data('missed', '1X3hay1mYbVIcI1o9IJhnrPUdx_Ay9-g9')
 read_data('df', '1NLmx2WhjyDuupfUc88DgHPRY-vJt5jg8')
 read_data('dd', '1Z548Jxk8jJiem3G6-vk2dDe_XLu3ti-j')
@@ -40,6 +30,7 @@ read_data('df_verifications', '1TxgH3FNX3-DJ97XGEjxtYU5ykLNkcYz5')
 read_data('healthy_book', '11l8yadH-Ycj1iRP9HCY5ye9iGIeityS6')
 read_data('installment_schedule', '1PyxvOWiTPEXXedIGL1Sb3fgqCJ_wVAgO')
 
+segment = "SW"
 
 
 
@@ -123,12 +114,6 @@ healthy_aov_scat = healthy_book.groupby(['merchant_name', 'day_of_created_date']
 ).reset_index()
 healthy_aov_scat['aov'] = healthy_aov_scat['aov'].round(0)
 
-color_map = {
-    'verified': 'green',
-    'pending': '#fff033',
-    'rejected': 'red'
-}
-
 total_loan_disbursed = f"{summary['total_loan_disbursed'].sum():,.0f}"
 refund_amount = f"{summary['refund_amount'].sum():,.0f}"
 total_receivable = f"{summary['total_receivable'].sum():,.0f}"
@@ -145,6 +130,7 @@ installment_schedule = installment_schedule[installment_schedule['which_month']=
 total_installments_to_receive = f"{installment_schedule['installment_id'].shape[0]:,.0f}"
 installments_already_received = f"{dd['installment_id'].shape[0]:,.0f}"
 
+average_loan_this_month = f"{healthy_book['aov_aed'].mean():,.0f}"
 
 missed = missed[missed['which_month']=='current_month']
 missed['order_date'] = pd.to_datetime(missed['order_date'])
@@ -163,10 +149,20 @@ fig_loan_active = px.line(summary_active,
                           x='day', 
                           y='Active_payments', 
                           text='Active_payments',
-                          title = f'Active Payments per Day: Total Number of Paid Installments each day for SW for the month of {current_month}',
+                          title = f'Active Payments per Day: Total Number of Paid Installments each day for {segment} for the month of {current_month}',
                           labels={'day': 'Day of Month', 'Active_payments': 'Active Payments'},
                           markers=True)
 fig_loan_active.update_traces(marker=dict(size=8), texttemplate='%{text:.0f}', textposition='top right', line=dict(color='#636efa'))
+
+fig_loan_active.update_layout(
+    title={
+        'font': {
+            'color': 'gray',  # Set title color to light gray
+            'family': 'Arial',     # Specify font family
+            'size': 18    # Set title size
+        }
+    }
+)
 
 fig_loan_active.update_xaxes(tickmode='linear', dtick=1)
 
@@ -176,9 +172,19 @@ fig_loan = px.line(summary,
                    x='created_date', 
                    y='total_loan_disbursed', 
                    text='total_loan_disbursed',
-                   title = f'Total Loans Disbursed per Day: Total number of loans disbursed daily for SW for the month of {current_month}',
+                   title = f'Total Loans Disbursed per Day: Total number of loans disbursed daily for {segment} for the month of {current_month}',
                    labels={'created_date': 'Day of Month', 'total_loan_disbursed': 'Total Loans'},
                    markers=True)
+
+fig_loan.update_layout(
+    title={
+        'font': {
+            'color': 'gray',  # Set title color to light gray
+            'family': 'Arial',     # Specify font family
+            'size': 18    # Set title size
+        }
+    }
+)
 
 fig_loan.update_traces(marker=dict(size=8), texttemplate='%{text:.0f}', textposition='top right', line=dict(color='#636efa'))
 
@@ -186,6 +192,11 @@ fig_loan.update_xaxes(tickmode='linear', dtick=1)
 
 #######################################################################################################################################################
 
+color_map = {
+    'pending': '#fff45c',     # verification-pending (yellow)
+    'rejected': '#ffa3a3',    # verification-rejected (light red)
+    'verified': '#bfe3bf'     # verification-verified (light green)
+}
 
 
 grouped_data = user_counts.groupby(['day', 'verification_status'])['user_id'].sum().reset_index()
@@ -224,8 +235,18 @@ for trace in fig_verifications.data:
     trace.hovertext = hover_text_filtered
 
 fig_verifications.update_traces(marker=dict(size=8), hovertemplate='%{hovertext}<extra></extra>', textposition='top right')
-fig_verifications.update_xaxes(tickmode='linear', dtick=1)
 
+fig_verifications.update_layout(
+    title={
+        'font': {
+            'color': 'gray',  # Set title color to light gray
+            'family': 'Arial',     # Specify font family
+            'size': 18    # Set title size
+        }
+    }
+)
+
+fig_verifications.update_xaxes(tickmode='linear', dtick=1)
 
 
 
@@ -237,7 +258,7 @@ fig_aov = px.line(
     x='day_of_created_date', 
     y='aov', 
     text='aov',
-    title = f'Average order value per day for SW for the month of {current_month}',
+    title = f'Average order value per day for {segment} for the month of {current_month}',
     labels={'day_of_created_date': 'Day of created date', 'aov': 'Average Order Value'},
     markers=True
 )
@@ -250,7 +271,12 @@ fig_aov.update_traces(
 
 fig_aov.update_layout(
     title={
-        'text': f'Average order value per day for SW for the month of {current_month}'
+        'text': f'Average order value per day for {segment} for the month of {current_month}',
+        'font': {
+            'color': 'gray',  # Set title color to light gray
+            'family': 'Arial',     # Specify font family
+            'size': 18    # Set title size
+        }
     }
 )
 
@@ -265,7 +291,7 @@ fig_bar_merchant = px.bar(
     healthy_merchant,  
     x='merchant_name',  
     y='aov', 
-    title = f'Average order value by Merchant: Average order value by merchant for SW for the month of {current_month}',
+    title = f'Average order value by Merchant: Average order value by merchant for {segment} for the month of {current_month}',
     labels={'merchant_name': 'Merchant', 'aov': 'Average Order Value'},  
     text='aov',
     color='merchant_name',
@@ -274,7 +300,12 @@ fig_bar_merchant = px.bar(
 
 fig_bar_merchant.update_layout(
     title={
-        'text':  f'Average order value by Merchant: Average order value by merchant for SW for the month of {current_month}'
+        'text':  f'Average order value by Merchant: Average order value by merchant for {segment} for the month of {current_month}',
+        'font': {
+            'color': 'gray',  # Set title color to light gray
+            'family': 'Arial',     # Specify font family
+            'size': 18    # Set title size
+        }
     },
     width=1400,  
     height=400,
@@ -293,7 +324,7 @@ fig_line_aov = px.line(
     x='day_of_created_date',
     y='aov',
     color='merchant_name',  # Color by merchant
-    title= f'AOV by Merchant Daily: Average order value per day by merchant for SW for the month of {current_month}',
+    title= f'AOV by Merchant Daily: Average order value per day by merchant for {segment} for the month of {current_month}',
     labels={'day_of_created_date': 'Day', 'aov': 'Average Order Value'},
     markers=True,
     text='aov',
@@ -308,6 +339,13 @@ for merchant in merchant_colors:
 
 fig_line_aov.update_layout(
     font=dict(size=14),
+    title={
+        'font': {
+            'color': 'gray',  # Set title color to light gray
+            'family': 'Arial',     # Specify font family
+            'size': 18    # Set title size
+        }
+    },
     height=500,
     xaxis=dict(tickmode='linear')
 )
@@ -322,7 +360,7 @@ fig_bar_merchant_gmv = px.bar(
     healthy_merchant_gmv,  
     x='merchant_name',  
     y='gmv', 
-    title= f'GMV by Merchant: Gross Merchandise Value by each merchant for SW for  {current_month}.',  
+    title= f'GMV by Merchant: Gross Merchandise Value by each merchant for {segment} for  {current_month}.',  
     labels={'merchant_name': 'Merchant', 'gmv': 'GMV'},  
     text='gmv',
     color='merchant_name',
@@ -331,7 +369,12 @@ fig_bar_merchant_gmv = px.bar(
 
 fig_bar_merchant_gmv.update_layout(
     title={
-        'text': f'GMV by Merchant: Gross Merchandise Value by each merchant for SW for {current_month}.'
+        'text': f'GMV by Merchant: Gross Merchandise Value by each merchant for {segment} for {current_month}.',
+        'font': {
+            'color': 'gray',  # Set title color to light gray
+            'family': 'Arial',     # Specify font family
+            'size': 18    # Set title size
+        }
     },
     width=1400,  
     height=400,
@@ -350,7 +393,7 @@ fig_line_gmv = px.line(
     x='day_of_created_date', 
     y='gmv', 
     color='merchant_name',  
-    title= f'GMV by Merchant: Gross Merchandise Value per day by each merchant for SW for {current_month}.',
+    title= f'GMV by Merchant: Gross Merchandise Value per day by each merchant for {segment} for {current_month}.',
     labels={'day_of_created_date': 'Day', 'gmv': 'GMV'},
     markers=True,  
     text='gmv' ,
@@ -364,6 +407,13 @@ for merchant in merchant_colors:
 
 fig_line_gmv.update_layout(
     font=dict(size=14), 
+    title={
+        'font': {
+            'color': 'gray',  # Set title color to light gray
+            'family': 'Arial',     # Specify font family
+            'size': 18    # Set title size
+        }
+    },
     #width=800, 
     height=500,
     xaxis=dict(
@@ -381,7 +431,7 @@ fig_missed = px.line(
     grouped, 
     x='day_of_order_date', 
     y='percentage_of_users', 
-    title=f'Missed Installments per Day: Percentage of users missing installments daily for SW for {current_month}.',
+    title=f'Missed Installments per Day: Percentage of users missing installments daily for {segment} for {current_month}.',
     labels={'day_of_order_date': 'Day of Order Date', 'percentage_of_users': '% of Users'},
     markers=True,  
     line_shape='spline',  
@@ -396,6 +446,13 @@ fig_missed.update_traces(
 
 fig_missed.update_layout(
     font=dict(size=14),
+    title={
+        'font': {
+            'color': 'gray',  # Set title color to light gray
+            'family': 'Arial',     # Specify font family
+            'size': 18    # Set title size
+        }
+    },
     height=500,
     xaxis=dict(tickmode='linear', dtick=1) 
    
@@ -403,8 +460,6 @@ fig_missed.update_layout(
 #######################################################################################################################################################
 
 st. set_page_config(layout="wide")
-
-st.title("Loan Summary SW")
 
 metrics_html = f"""
 <!DOCTYPE html>
@@ -432,9 +487,17 @@ metrics_html = f"""
             font-size: 1.5em;
             color: #333;
         }}
+        .heading {{
+            margin-top: 0px;
+            font-size: 18px;
+            color: gray;
+            font-family: Arial, sans-serif;
+            margin-bottom: 15px;
+        }}
     </style>
 </head>
 <body>
+    <h1 class="heading">Loan Summary for {current_month}</h1>
     <div class="summary-container">
         <div class="summary-box">
             <p>Total Loans Disbursed</p>
@@ -491,13 +554,13 @@ metrics_verif_html = f"""
             width: calc(29% - 20px);
         }}
         .verification-pending {{
-            background-color: #FFFF00;
+            background-color: #FFF898;
         }}
         .verification-rejected {{
-            background-color: #FF0000;
+            background-color: #ffe5e5;
         }}
         .verification-verified {{
-            background-color: #008000;
+            background-color: #e5ffe5;
         }}
         .verification-box h4 {{
             margin: 0;
@@ -508,8 +571,15 @@ metrics_verif_html = f"""
             font-size: 2em;
             margin: 0;
         }}
+        .heading {{
+            margin-top: 0px;
+            font-size: 18px;
+            color: gray;
+            font-family: Arial, sans-serif;
+            margin-bottom: 15px;
+        }}
     </style>
-    
+    <h1 class="heading">User Onboarding Summary for {current_month}</h1>
     <div class="verification-container">
         <div class="verification-box verification-pending">
             <h4>PENDING</h4>
@@ -540,7 +610,7 @@ metrics_payments = f"""
             display: flex;
             flex-wrap: wrap;
             gap: 20px;
-            padding-left: 160px;
+            padding-left: 0px;
         }}
         .summary-box {{
             background: #f4f4f4;
@@ -556,9 +626,17 @@ metrics_payments = f"""
             font-size: 1.5em;
             color: #333;
         }}
+        .heading {{
+            margin-top: 0px;
+            font-size: 18px;
+            color: gray;
+            font-family: Arial, sans-serif;
+            margin-bottom: 15px;
+        }}
     </style>
 </head>
 <body>
+    <h1 class="heading">Installments Summary for {current_month}</h1>
     <div class="summary-container">
         <div class="summary-box">
             <p>Total Installments Due this Month</p>
@@ -578,12 +656,62 @@ metrics_payments = f"""
 </html>
 """
 
-components.html(metrics_html, height=300, scrolling=True)
+metrics_average_loan = f"""
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        .summary-container {{
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            padding-left: 0px;
+        }}
+        .summary-box {{
+            background: #f4f4f4;
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+            width: calc(30% - 20px); /* Adjust width to fit 4 boxes per line */
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            box-sizing: border-box;
+        }}
+        .summary-box h3 {{
+            margin: 0;
+            font-size: 1.5em;
+            color: #333;
+        }}
+        .heading {{
+            margin-top: 0px;
+            font-size: 18px;
+            color: gray;
+            font-family: Arial, sans-serif;
+            margin-bottom: 15px;
+        }}
+    </style>
+</head>
+<body>
+    <h1 class="heading">Average Loan Summary for {current_month}</h1>
+    <div class="summary-container">
+         <div class="summary-box">
+            <p>Average Loan Amount this Month</p>
+            <h3>{average_loan_this_month}</h3>
+        </div>
+    </div>
+    
+</body>
+</html>
+"""
+
+components.html(metrics_html, height=330, scrolling=True)
 st.plotly_chart(fig_loan, use_container_width=True)
-components.html(metrics_verif_html, height=150, scrolling=True)
+components.html(metrics_verif_html, height=170, scrolling=True)
 st.plotly_chart(fig_verifications, use_container_width=True)
-components.html(metrics_payments, height=150, scrolling=True)
+components.html(metrics_payments, height=170, scrolling=True)
 st.plotly_chart(fig_loan_active, use_container_width=True)
+components.html(metrics_average_loan, height=170, scrolling=True)
 st.plotly_chart(fig_aov, use_container_width=True)
 st.plotly_chart(fig_bar_merchant, use_container_width=True)
 st.plotly_chart(fig_line_aov, use_container_width=True)
