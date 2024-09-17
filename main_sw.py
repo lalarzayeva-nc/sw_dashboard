@@ -11,7 +11,7 @@ from googleapiclient.http import MediaIoBaseDownload
 
 import toml
 # Load credentials from secrets.toml
-config = toml.load("streamlit/secrets.toml")
+config = toml.load(r"C:\Users\user\Downloads\streamlit_plotly_SW-Streamlit_SW_plotly\streamlit_plotly_SW-Streamlit_SW_plotly\streamlit\secrets.toml")
 
 # Access the service account info
 service_account_info = config['gcp_service_account']
@@ -387,6 +387,9 @@ verified_count = f"{total_verified:,}"
    
 st. set_page_config(layout="wide")
 
+####added
+st.title("Loan Summary SW")
+
 metrics_html = f"""
 <!DOCTYPE html>
 <html lang="en">
@@ -468,13 +471,13 @@ metrics_verif_html = f"""
             width: calc(29% - 20px);
         }}
         .verification-pending {{
-            background-color: #FFF898;
+            background-color: #fff033;
         }}
         .verification-rejected {{
-            background-color: #ffe5e5;
+            background-color: #FF0000;
         }}
         .verification-verified {{
-            background-color: #e5ffe5;
+            background-color: #008000;
         }}
         .verification-box h4 {{
             margin: 0;
