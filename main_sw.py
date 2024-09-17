@@ -9,12 +9,10 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 #import constants as cn
 
-import toml
-# Load credentials from secrets.toml
-config = toml.load(r"C:\Users\user\Downloads\streamlit_plotly_SW-Streamlit_SW_plotly\streamlit_plotly_SW-Streamlit_SW_plotly\streamlit\secrets.toml")
+service_account_info = st.secrets["gcp_service_account"]
+credentials = service_account.Credentials.from_service_account_info(service_account_info)
+service = build('drive', 'v3', credentials=credentials)
 
-# Access the service account info
-service_account_info = config['gcp_service_account']
 
 # Use the credentials to authenticate
 credentials = service_account.Credentials.from_service_account_info(service_account_info)
@@ -40,12 +38,12 @@ read_data('df', '1NLmx2WhjyDuupfUc88DgHPRY-vJt5jg8')
 read_data('dd', '1Z548Jxk8jJiem3G6-vk2dDe_XLu3ti-j')
 read_data('df_verifications', '1TxgH3FNX3-DJ97XGEjxtYU5ykLNkcYz5')
 read_data('healthy_book', '11l8yadH-Ycj1iRP9HCY5ye9iGIeityS6')
+read_data('installment_schedule', '1PyxvOWiTPEXXedIGL1Sb3fgqCJ_wVAgO')
 
 
 
 
-#Historical loans 
-#df = pd.read_csv(r"C:\Users\user\Downloads\exported_workbooks\historical_loans_PL.csv")
+# df = pd.read_csv('risk_dumps/historical_loans_PL.csv')
 df = df[df['which_month'] == 'current_month']
 df['created_date'] = pd.to_datetime(df['created_datetime_dubai']).dt.day
 
@@ -63,7 +61,7 @@ summary = df.groupby('created_date').agg(
 summary['percentage_loan_disbursed'] = (summary['total_loan_disbursed'] / summary['total_loan_disbursed'].sum()) * 100
 
 # Active loans data
-#dd = pd.read_csv(r"C:\Users\user\Downloads\exported_workbooks\PL_Installments_Report_daily.csv")
+# dd = pd.read_csv('risk_dumps/PL_Installments_Report_daily.csv')
 dd = dd[dd['which_month'] == 'current_month']
 dd['Order Date (UTC Time)'] = pd.to_datetime(dd['Order Date (UTC Time)'])
 dd['day'] = dd['Order Date (UTC Time)'].dt.day
@@ -73,10 +71,14 @@ summary_active = dd.groupby('day').agg(
 ).reset_index()
 
 # Verifications data
-#df_verifications = pd.read_csv(r"C:\Users\user\Downloads\exported_workbooks\verifications_PL.csv")
+# df_verifications = pd.read_csv('risk_dumps/verifications_PL.csv')
 df_verifications = df_verifications[df_verifications['which_month'] == 'current_month']
 df_verifications['attempted_at'] = pd.to_datetime(df_verifications['attempted_at'])
 df_verifications['day'] = df_verifications['attempted_at'].dt.day
+
+df_verifications['created_at'] = pd.to_datetime(df_verifications['created_at'], errors='coerce')
+df_verifications['month'] = df_verifications['created_at'].dt.strftime('%B')
+current_month= df_verifications['month'].dropna().unique()[0]
 
 verification_totals = df_verifications.groupby('verification_status')['user_id'].count().reset_index()
 total_pending = verification_totals[verification_totals['verification_status'] == 'pending']['user_id'].sum()
@@ -87,8 +89,7 @@ total_users_per_day = df_verifications.groupby('day')['user_id'].count().reset_i
 user_counts = df_verifications.groupby(['day', 'verification_status'])['user_id'].count().reset_index()
 user_counts = pd.merge(user_counts, total_users_per_day, on='day')
 user_counts['percentage_of_users'] = (user_counts['user_id'] / user_counts['total_users']) * 100
-user_counts = user_counts[['day', 'verification_status', 'percentage_of_users']]
-
+#user_counts = user_counts[['day', 'verification_status', 'percentage_of_users']]
 
 #Average order value
 #healthy_book = pd.read_csv(r"C:\Users\user\Downloads\exported_workbooks\healthy_book.csv")
@@ -122,10 +123,29 @@ healthy_aov_scat = healthy_book.groupby(['merchant_name', 'day_of_created_date']
 ).reset_index()
 healthy_aov_scat['aov'] = healthy_aov_scat['aov'].round(0)
 
+color_map = {
+    'verified': 'green',
+    'pending': '#fff033',
+    'rejected': 'red'
+}
 
-#################MISSED_INSTALLMENTS####################################################
+total_loan_disbursed = f"{summary['total_loan_disbursed'].sum():,.0f}"
+refund_amount = f"{summary['refund_amount'].sum():,.0f}"
+total_receivable = f"{summary['total_receivable'].sum():,.0f}"
+total_paid = f"{summary['total_repayment'].sum():,.0f}"
+delinquency_rate = f"{df[(df['first_missed_date'].notnull())&(df['net_loss_new']>0)].shape[0]:,.0f}"
+active_loans = f"{df[df['order_status']=='ACTIVE'].shape[0]:,.0f}"
+completed_loans = f"{df[df['order_status']=='COMPLETE'].shape[0]:,.0f}"
 
-#missed  = pd.read_csv(r"C:\Users\user\Downloads\exported_workbooks\PL_Missed_Report_daily (1).csv")
+pending_count = f"{total_pending:,}"
+rejected_count = f"{total_rejected:,}"
+verified_count = f"{total_verified:,}"
+
+installment_schedule = installment_schedule[installment_schedule['which_month']=='current_month']
+total_installments_to_receive = f"{installment_schedule['installment_id'].shape[0]:,.0f}"
+installments_already_received = f"{dd['installment_id'].shape[0]:,.0f}"
+
+
 missed = missed[missed['which_month']=='current_month']
 missed['order_date'] = pd.to_datetime(missed['order_date'])
 missed['day_of_order_date'] = missed['order_date'].dt.day
@@ -137,39 +157,48 @@ grouped = missed.groupby('day_of_order_date').agg(
 grouped['percentage_of_users'] = (grouped['missed_count'] / grouped['count']) * 100
 
 
-
-
-
-color_map = {
-    'verified': 'green',
-    'pending': '#fff033',
-    'rejected': 'red'
-}
-
-# Create the figures
+#######################################################################################################################################################
 fig_loan_active = px.line(summary_active, 
                           line_shape='spline', 
                           x='day', 
                           y='Active_payments', 
                           text='Active_payments',
-                          title='Active Payments per Day',
+                          title = f'Active Payments per Day: Total Number of Paid Installments each day for SW for the month of {current_month}',
                           labels={'day': 'Day of Month', 'Active_payments': 'Active Payments'},
                           markers=True)
-fig_loan_active.update_traces(marker=dict(size=8), texttemplate='%{text:.0f}', textposition='top right')
+fig_loan_active.update_traces(marker=dict(size=8), texttemplate='%{text:.0f}', textposition='top right', line=dict(color='#636efa'))
+
 fig_loan_active.update_xaxes(tickmode='linear', dtick=1)
 
+#######################################################################################################################################################
 fig_loan = px.line(summary, 
                    line_shape='spline', 
                    x='created_date', 
                    y='total_loan_disbursed', 
                    text='total_loan_disbursed',
-                   title='Total Loans Disbursed per Day',
+                   title = f'Total Loans Disbursed per Day: Total number of loans disbursed daily for SW for the month of {current_month}',
                    labels={'created_date': 'Day of Month', 'total_loan_disbursed': 'Total Loans'},
                    markers=True)
-fig_loan.update_traces(marker=dict(size=8), texttemplate='%{text:.0f}', textposition='top right')
+
+fig_loan.update_traces(marker=dict(size=8), texttemplate='%{text:.0f}', textposition='top right', line=dict(color='#636efa'))
+
 fig_loan.update_xaxes(tickmode='linear', dtick=1)
 
 #######################################################################################################################################################
+
+
+
+grouped_data = user_counts.groupby(['day', 'verification_status'])['user_id'].sum().reset_index()
+pivot_data = grouped_data.pivot(index='day', columns='verification_status', values='user_id').fillna(0)
+pivot_data['hover_text'] = pivot_data.apply(
+    lambda row: ' | '.join([f"{status}: {int(row[status])}" for status in pivot_data.columns]), 
+    axis=1
+)
+
+if 'hover_text' in user_counts.columns:
+    user_counts = user_counts.drop(columns=['hover_text'])
+
+user_counts = user_counts.merge(pivot_data[['hover_text']], on='day', how='left')
 
 fig_verifications = px.line(user_counts, 
               x='day', 
@@ -182,25 +211,33 @@ fig_verifications = px.line(user_counts,
               line_shape='spline',  
               text='percentage_of_users'  
              )
-
 for trace in fig_verifications.data:
     verification_status = trace.name
     trace_text = user_counts[user_counts['verification_status'] == verification_status]['percentage_of_users'].round(0).astype(int).astype(str) + '%'
     trace.text = trace_text
     trace.textposition = 'top right'
 
-fig_verifications.update_traces(marker=dict(size=8), textposition='top right')
+for trace in fig_verifications.data:
+    verification_status = trace.name
+    
+    hover_text_filtered = user_counts[user_counts['verification_status'] == verification_status]['hover_text']
+    trace.hovertext = hover_text_filtered
+
+fig_verifications.update_traces(marker=dict(size=8), hovertemplate='%{hovertext}<extra></extra>', textposition='top right')
 fig_verifications.update_xaxes(tickmode='linear', dtick=1)
 
-###########################################################################################################################################################
 
+
+
+
+#######################################################################################################################################################
 fig_aov = px.line(
     healthy, 
     line_shape='spline', 
     x='day_of_created_date', 
     y='aov', 
     text='aov',
-    title='Average Order Value per day',  
+    title = f'Average order value per day for SW for the month of {current_month}',
     labels={'day_of_created_date': 'Day of created date', 'aov': 'Average Order Value'},
     markers=True
 )
@@ -209,87 +246,121 @@ fig_aov.update_traces(
     marker=dict(size=8), 
     texttemplate='%{text:.0f}', 
     textposition='top right', 
-    line=dict(color='red'))
+    line=dict(color='#636efa'))
 
 fig_aov.update_layout(
     title={
-        'text': 'Average Order Value per day',  
-        #'font': dict(size=24, family='Arial', color='black', weight='bold') 
+        'text': f'Average order value per day for SW for the month of {current_month}'
     }
 )
 
 fig_aov.update_xaxes(tickmode='linear', dtick=1)
 
-###################################################################################################################################################################
+#######################################################################################################################################################
+merchant_colors = {
+    merchant: color for merchant, color in zip(healthy_merchant['merchant_name'].unique(), px.colors.qualitative.Plotly)
+}
 
 fig_bar_merchant = px.bar(
     healthy_merchant,  
     x='merchant_name',  
     y='aov', 
-    title='Average Order Value per Merchant',  
+    title = f'Average order value by Merchant: Average order value by merchant for SW for the month of {current_month}',
     labels={'merchant_name': 'Merchant', 'aov': 'Average Order Value'},  
-    text='aov',  
+    text='aov',
+    color='merchant_name',
+    color_discrete_map=merchant_colors
 )
 
 fig_bar_merchant.update_layout(
     title={
-        'text': 'Average Order Value per Merchant'
+        'text':  f'Average order value by Merchant: Average order value by merchant for SW for the month of {current_month}'
     },
-    #font=dict(size=20, family='Arial', color='black', weight='bold'),  
-   # width=1400,  
-    height=400 ,
+    width=1400,  
+    height=400,
     yaxis=dict(range=[0, healthy_merchant['aov'].max()+healthy_merchant['aov'].mean()]) 
 )
 
 fig_bar_merchant.update_traces(
-    texttemplate='%{text:.0f}', 
-    #textfont=dict(size=19), 
-    textposition='outside'   
+    texttemplate='%{text:,.0f} QAR', 
+    textfont=dict(size=19), 
+    textposition='inside'   
 )
 
-#######################################################################################################################################################################
+#######################################################################################################################################################
+fig_line_aov = px.line(
+    healthy_aov_scat,
+    x='day_of_created_date',
+    y='aov',
+    color='merchant_name',  # Color by merchant
+    title= f'AOV by Merchant Daily: Average order value per day by merchant for SW for the month of {current_month}',
+    labels={'day_of_created_date': 'Day', 'aov': 'Average Order Value'},
+    markers=True,
+    text='aov',
+    line_shape='spline'
+)
 
+# Update traces to set the line color explicitly for each merchant
+for merchant in merchant_colors:
+    fig_line_aov.for_each_trace(
+        lambda trace: trace.update(line=dict(color=merchant_colors[trace.name])) if trace.name == merchant else ()
+    )
 
+fig_line_aov.update_layout(
+    font=dict(size=14),
+    height=500,
+    xaxis=dict(tickmode='linear')
+)
+
+fig_line_aov.update_traces(
+    textposition="top right",
+    texttemplate='%{text:.0f}'
+)
+
+#######################################################################################################################################################
 fig_bar_merchant_gmv = px.bar(
     healthy_merchant_gmv,  
     x='merchant_name',  
     y='gmv', 
-    title='GMV per Merchant',  
+    title= f'GMV by Merchant: Gross Merchandise Value by each merchant for SW for  {current_month}.',  
     labels={'merchant_name': 'Merchant', 'gmv': 'GMV'},  
-    text='gmv'
+    text='gmv',
+    color='merchant_name',
+    color_discrete_map=merchant_colors
 )
 
 fig_bar_merchant_gmv.update_layout(
     title={
-        'text': 'GMV per Merchant'
+        'text': f'GMV by Merchant: Gross Merchandise Value by each merchant for SW for {current_month}.'
     },
-    #font=dict(size=20, family='Arial', color='black', weight='bold'),  
-    #width=1400,  
+    width=1400,  
     height=400,
-    yaxis=dict(range=[0, healthy_merchant_gmv['gmv'].max()+healthy_merchant_gmv['gmv'].mean()])
-    
+    yaxis=dict(range=[0, healthy_merchant_gmv['gmv'].max()+healthy_merchant_gmv['gmv'].mean()]) 
 )
 
 fig_bar_merchant_gmv.update_traces(
-    marker=dict(color='#149c6f'),  
-    texttemplate='%{text:.0f}', 
-    textposition='outside'# ,
-    #textfont=dict(size=19)
+    texttemplate='%{text:,.0f} QAR', 
+    textfont=dict(size=19), 
+    textposition='inside'   
 )
 
-########################################################################
-
+#######################################################################################################################################################
 fig_line_gmv = px.line(
     healthy_gmv_scat, 
     x='day_of_created_date', 
     y='gmv', 
     color='merchant_name',  
-    title='GMV Line Plot by Merchant',
+    title= f'GMV by Merchant: Gross Merchandise Value per day by each merchant for SW for {current_month}.',
     labels={'day_of_created_date': 'Day', 'gmv': 'GMV'},
     markers=True,  
     text='gmv' ,
      line_shape='spline'
 )
+
+for merchant in merchant_colors:
+    fig_line_gmv.for_each_trace(
+        lambda trace: trace.update(line=dict(color=merchant_colors[trace.name])) if trace.name == merchant else ()
+    )
 
 fig_line_gmv.update_layout(
     font=dict(size=14), 
@@ -305,44 +376,12 @@ fig_line_gmv.update_traces(
     texttemplate='%{text:.0f}',  
 )
 
-
-###############################################################################3
-
-fig_line_aov = px.line(
-    healthy_aov_scat, 
-    x='day_of_created_date', 
-    y='aov', 
-    color='merchant_name',  
-    title='AOV Line Plot by Merchant',
-    labels={'day_of_created_date': 'Day', 'aov': 'Average Order Value'},
-    markers=True,  
-    text='aov',
-     line_shape='spline'  
-)
-
-fig_line_aov.update_layout(
-    font=dict(size=14), 
-    #width=1200, 
-    height=500,
-    xaxis=dict(
-        tickmode='linear'  
-    )
-)
-
-
-fig_line_aov.update_traces(
-    textposition="top right",  
-    texttemplate='%{text:.0f}'
-)
-
-#####################################################################################
-
+#######################################################################################################################################################
 fig_missed = px.line(
     grouped, 
     x='day_of_order_date', 
     y='percentage_of_users', 
-    
-    title='Missed Installments per Day',
+    title=f'Missed Installments per Day: Percentage of users missing installments daily for SW for {current_month}.',
     labels={'day_of_order_date': 'Day of Order Date', 'percentage_of_users': '% of Users'},
     markers=True,  
     line_shape='spline',  
@@ -355,39 +394,16 @@ fig_missed.update_traces(
     marker=dict(size=8)  
 )
 
-
 fig_missed.update_layout(
     font=dict(size=14),
     height=500,
     xaxis=dict(tickmode='linear', dtick=1) 
    
 )
+#######################################################################################################################################################
 
-
-
-
-
-
-
-total_loan_disbursed = f"{summary['total_loan_disbursed'].sum():,.0f}"
-refund_amount = f"{summary['refund_amount'].sum():,.0f}"
-total_receivable = f"{summary['total_receivable'].sum():,.0f}"
-total_paid = f"{summary['total_repayment'].sum():,.0f}"
-delinquency_rate = f"{df[(df['first_missed_date'].notnull())&(df['net_loss_new']>0)].shape[0]:,.0f}"
-active_loans = f"{df[df['order_status']=='ACTIVE'].shape[0]:,.0f}"
-
-
-pending_count = f"{total_pending:,}"
-rejected_count = f"{total_rejected:,}"
-verified_count = f"{total_verified:,}"
-
-
-
-     
-   
 st. set_page_config(layout="wide")
 
-####added
 st.title("Loan Summary SW")
 
 metrics_html = f"""
@@ -444,6 +460,10 @@ metrics_html = f"""
             <p>Number of Active Loans</p>
             <h3>{active_loans}</h3>
         </div>
+        <div class="summary-box">
+            <p>Number of Completed Loans</p>
+            <h3>{completed_loans}</h3>
+        </div>
     </div>
     
 </body>
@@ -471,7 +491,7 @@ metrics_verif_html = f"""
             width: calc(29% - 20px);
         }}
         .verification-pending {{
-            background-color: #fff033;
+            background-color: #FFFF00;
         }}
         .verification-rejected {{
             background-color: #FF0000;
@@ -482,7 +502,7 @@ metrics_verif_html = f"""
         .verification-box h4 {{
             margin: 0;
             font-size: 1em;
-            color: #555;
+            color: #333333;
         }}
         .verification-box h3 {{
             font-size: 2em;
@@ -509,10 +529,60 @@ metrics_verif_html = f"""
 </html>
 """
 
+metrics_payments = f"""
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        .summary-container {{
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            padding-left: 160px;
+        }}
+        .summary-box {{
+            background: #f4f4f4;
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+            width: calc(30% - 20px); /* Adjust width to fit 4 boxes per line */
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            box-sizing: border-box;
+        }}
+        .summary-box h3 {{
+            margin: 0;
+            font-size: 1.5em;
+            color: #333;
+        }}
+    </style>
+</head>
+<body>
+    <div class="summary-container">
+        <div class="summary-box">
+            <p>Total Installments Due this Month</p>
+            <h3>{int(total_installments_to_receive) + int(installments_already_received)}</h3>
+        </div>
+         <div class="summary-box">
+            <p>Total Installments already Received</p>
+            <h3>{installments_already_received}</h3>
+        </div>
+        <div class="summary-box">
+            <p>Total Installments yet to be Received</p>
+            <h3>{total_installments_to_receive}</h3>
+        </div>
+    </div>
+    
+</body>
+</html>
+"""
+
 components.html(metrics_html, height=300, scrolling=True)
 st.plotly_chart(fig_loan, use_container_width=True)
 components.html(metrics_verif_html, height=150, scrolling=True)
 st.plotly_chart(fig_verifications, use_container_width=True)
+components.html(metrics_payments, height=150, scrolling=True)
 st.plotly_chart(fig_loan_active, use_container_width=True)
 st.plotly_chart(fig_aov, use_container_width=True)
 st.plotly_chart(fig_bar_merchant, use_container_width=True)
